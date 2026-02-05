@@ -69,5 +69,5 @@ Prep steps:
 
 ## Author
 
-*Your Name*
-*Year / Course / Institution*
+Marco Gennaro
+*2026 / Statistical Learning - Unsupervised Learning/ Universitá degli Studi di Catania*
