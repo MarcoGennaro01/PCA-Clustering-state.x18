@@ -1,15 +1,15 @@
-library(hopkins)   # Cluster tendency
-library(factoextra)# Visualization & optimal clusters
+library(factoextra)# Visualization, optimal clusters, cluster tendency
 library(fpc)       # Cluster statistics
 library(ggplot2)   # Visualization
 library(cluster)   # AGNES and PAM algorithms
 library(clValid)   # Internal/Stability validation
 library(fclust)    # Fuzzy clustering
-library(mclust)   
+library(mclust)    
 library(tidyverse)
 library(usa)
 library(usmap)
 library(plotly)
+
 
 ################################################################################
 #Data Loading and Cleaning
@@ -18,8 +18,8 @@ library(plotly)
 data(facts)
 df <- as.data.frame(facts) #load data
 rownames(df) <- df$name
-df <- subset(df, select = -c(name,admission,votes))
 df <- drop_na(df)
+df <- subset(df, select = -c(name,admission,votes))
 df <- scale(df) #Standardize data
 
 ################################################################################
@@ -30,7 +30,7 @@ eigen.df <- eigen(cov(df)) #Eigen matrix
 #Compute the proportion of variance explained (PVE)
 PVE <- eigen.df$values/sum(eigen.df$values)
 
-#Elbow Method (The elbow seems to be placed at k = 4)
+#Elbow Method
 qplot(c(1: length(PVE)-1), PVE) + 
   geom_line() + 
   xlab("PC") + 
@@ -80,9 +80,8 @@ plot_ly(
 ################################################################################
 #Cluster Analysis
 ################################################################################
-
 df.tendency <- get_clust_tendency(df,n = nrow(df)-1,seed = 123)
-df.tendency$hopkins_stat # The Hopkins statistic is 0.7545 (there's clearly a cluster tendency)
+df.tendency$hopkins_stat # The Hopkins statistic is 0.7545 (there's a moderate cluster tendency)
 df.tendency$plot
 
 #Internal validation with agnes ward algorithm
@@ -123,7 +122,9 @@ clmethods <- c( "agnes","kmeans","pam")
 relative <- clValid(df, nClust = 2:6, 
                     clMethods = clmethods,
                     validation = "stability",
-                    method = "average")
+                    method = "average",
+                    metric = "manhattan")
+summary(relative)
 optimalScores(relative)
 
 #Average linkage method (hierarchical agglomerative clustering)
@@ -150,8 +151,7 @@ cor(get_dist(df, method = "manhattan"), df.coph) # 0.8094537
 
 #Let's see what the Ward algorithm returns us
 df.agnes <- agnes(df, # data matrix
-                  method = "ward", 
-                  metric = "manhattan"
+                  method = "ward" 
 )
 #Compute and plot the dendogram
 fviz_dend(df.agnes, horiz = TRUE)
@@ -164,7 +164,7 @@ fviz_cluster(list(data = df, cluster = groups),
              show.clust.cent = FALSE, ggtheme = theme_minimal())
 
 ################################################################################
-#Cluster Analysis
+#Cluster Analysis - Partitioning
 ################################################################################
 
 #Elbow method (it appears to be at k = 5)
@@ -208,8 +208,3 @@ plot_data <- data.frame(
 plot_usmap(data = plot_data, values = "cluster", color = "white") +
   scale_fill_brewer(palette = "Set1", name = "Clusters") + 
   theme(legend.position = "right")
-
-
-
-
-
