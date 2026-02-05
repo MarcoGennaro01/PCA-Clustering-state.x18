@@ -208,3 +208,5 @@ plot_data <- data.frame(
 plot_usmap(data = plot_data, values = "cluster", color = "white") +
   scale_fill_brewer(palette = "Set1", name = "Clusters") + 
   theme(legend.position = "right")
+
+#Marco Gennaro, 2026,https://github.com/MarcoGennaro01/PCA-Clustering-state.x18
