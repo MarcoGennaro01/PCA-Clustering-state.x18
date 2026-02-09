@@ -137,7 +137,7 @@ df.agnes <- agnes(df, # data matrix
 fviz_dend(df.agnes,horiz = TRUE)
 
 #Let's visualize the clusters
-groups <- cutree(df.agnes, k = 6)
+groups <- cutree(df.agnes, k = 8)
 fviz_cluster(list(data = df, cluster = groups),
              palette = "npg",
              repel = TRUE, 
@@ -208,5 +208,18 @@ plot_data <- data.frame(
 plot_usmap(data = plot_data, values = "cluster", color = "white") +
   scale_fill_brewer(palette = "Set1", name = "Clusters") + 
   theme(legend.position = "right")
+
+#Internal validation with agnes single linkage
+intern <- clValid(df, nClust = 4,
+                  clMethods = "kmeans", 
+                  validation = "internal")
+summary(intern)
+
+#Relative cluster validation for the same algorithms
+relative <- clValid(df, nClust = 4, 
+                    clMethods = "kmeans",
+                    validation = "stability")
+summary(relative)
+
 
 #Marco Gennaro, 2026,https://github.com/MarcoGennaro01/PCA-Clustering-state.x18
