@@ -1,0 +1,306 @@
+---
+title: "State.x18 - PCA and Cluster Analysis"
+author: "Marco Gennaro"
+output: 
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+# State.x18 - PCA and Cluster Analysis
+
+U.S. history and geography have deeply influenced the socioeconomic development of individual states. These historical patterns still have effects today, and we can observe similar characteristics among states in specific geographic clusters. In this analysis, I use PCA to visualize the multidimensional dataset **state.x18**, contained in the **usa** library, which includes socioeconomic indicators for U.S. states.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+library(factoextra)
+library(fpc)       
+library(ggplot2)   
+library(cluster)   
+library(clValid)   
+library(fclust)    
+library(mclust)    
+library(tidyverse)
+library(usa)
+library(usmap)
+library(plotly)
+```
+
+## Data handling
+
+First, I load the dataset and prepare it for analysis by casting it to a data frame.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+data(facts)
+df <- as.data.frame(facts) #load data
+head(df)
+```
+
+Next, I set state names as row names, remove territories (which have missing values in 'admission' or 'votes'), and drop 'admission' and 'votes'. I remove 'admission' to avoid introducing an east-to-west temporal gradient, and I remove 'votes' because it acts as a proxy for population. Finally, I standardize all variables.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+rownames(df) <- df$name
+df <- drop_na(df)
+df <- subset(df, select = -c(name,admission,votes))
+df <- scale(df) #Standardize data
+head(df)
+```
+
+The data is now ready for Principal Component Analysis.
+
+## PCA
+
+PCA helps visualize the data in two- or three-dimensional space. Since we have six variables, dimensionality reduction is necessary.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+eigen.df <- eigen(cov(df))
+```
+
+I first perform eigendecomposition on the covariance matrix. The 'eigen' function returns eigenvectors and eigenvalues. I then compute the percentage of variance explained and select the number of PCs that explain at least 80% of the total variance.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+(PVE <- eigen.df$values/sum(eigen.df$values))
+```
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+#Elbow Method
+qplot(c(1: length(PVE)-1), PVE) + 
+  geom_line() + 
+  xlab("PC") + 
+  ylab("% of Variance Explained") +
+  ggtitle("Scree Plot") +
+  ylim(0, 1)
+```
+
+The elbow is not very clear, but it appears around $k = 3$. Let's compute the cumulative variance explained for the first three components.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+(sum(round(PVE, 3)[1:3]) * 100) # 87.10
+```
+
+About 87% is sufficient. Next, I compute the first three principal components.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+phi <- eigen.df$vectors[,1:3] # phi data frame
+row.names(phi) <- colnames(df) 
+colnames(phi) <- c("PC1", "PC2","PC3")
+phi
+```
+
+I now compute the PC scores and build a dataset for visualization.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+PC1 <- df %*% phi[,1] # PC1
+PC2 <- df %*% phi[,2] # PC2
+PC3 <- df %*% phi[,3] # PC3
+```
+
+Let's visualize the data.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+PC <- data.frame(PC1, PC2, PC3) #Data frame with PCs for visualization
+
+plot_ly(
+  data = PC,
+  x = ~PC1,
+  y = ~PC2,
+  z = ~PC3,
+  type = "scatter3d",
+  mode = "markers",
+  text = rownames(df),
+  hoverinfo = 'text',
+  marker = list(color = "steelblue"),
+  showlegend = FALSE
+)
+```
+
+From visual inspection, there are several outliers (District of Columbia, Florida, Texas, California). Most other states appear concentrated in overlapping, non–clearly separated groups. We therefore need to assess the clustering tendency more formally.
+
+## Cluster Analysis
+
+First, I assess the clustering tendency of the data.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+df.tendency <- get_clust_tendency(df,n = nrow(df)-1,seed = 123)
+(df.tendency$hopkins_stat)
+df.tendency$plot
+
+```
+
+The Hopkins statistic suggests moderate clustering tendency. In the VAT plot, several groups appear along the diagonal, although they are weakly separated and fuzzy. This is expected, since clear-cut differences at the state level are difficult to obtain. A few outliers are also visible.
+
+I then compute internal validation indices to evaluate how well different algorithms produce compact and well-separated clusters.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+#Internal validation with agnes ward algorithm
+clmethods <- c("agnes","kmeans","pam")
+intern <- clValid(df, nClust = 2:6,
+                  clMethods = clmethods, 
+                  method = "ward",
+                  metric = "manhattan",
+                  validation = "internal")
+summary(intern)
+optimalScores(intern)
+```
+
+I compare 'agnes' (Ward), PAM, and K-means for 2 to 6 clusters. The best result is 'agnes' with 4 clusters. I exclude single and complete linkage because outliers can distort those methods.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+#Internal validation with agnes average linkage
+clmethods <- c("agnes","kmeans","pam")
+intern <- clValid(df, nClust = 2:6,
+                  clMethods = clmethods, 
+                  method = "average",
+                  metric = "manhattan",
+                  validation = "internal")
+summary(intern)
+optimalScores(intern)
+```
+
+The average linkage method performs better than Ward across all tested cluster counts. Both methods tend to identify approximately hyperspherical structures.
+
+Still, I will inspect both.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+#Average linkage method (hierarchical agglomerative clustering)
+df.agnes <- agnes(df, # data matrix
+                  method = "average", 
+                  metric = "manhattan"
+)
+
+#Compute and plot the dendogram
+fviz_dend(df.agnes,horiz = TRUE)
+
+```
+
+Here, four clusters form relatively low in the dendrogram, while four observations merge only at high levels in the tree (likely outliers). Let's inspect the hard partition in two-dimensional space.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+#Let's visualize the clusters
+groups <- cutree(df.agnes, k = 8)
+fviz_cluster(list(data = df, cluster = groups),
+             palette = "npg",
+             repel = TRUE, 
+             show.clust.cent = FALSE, ggtheme = theme_minimal())
+```
+
+We can already see the four clusters. Next, I evaluate the fit using the correlation between original and cophenetic distances.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+#Compute the cophenetic distance
+df.coph <- cophenetic(df.agnes)
+
+# Correlation between cophenetic and original distances
+cor(get_dist(df, method = "manhattan"), df.coph) # 0.8094537
+```
+
+A correlation of 0.8094 tells us that the algorithm performed really well.
+
+Now, let's assess the Ward method.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+#Let's see what the Ward algorithm returns us
+df.agnes <- agnes(df, # data matrix
+                  method = "ward" 
+)
+#Compute and plot the dendogram
+fviz_dend(df.agnes, horiz = TRUE)
+```
+
+We still observe four clusters with similar outliers. Let's visualize them in two-dimensional space.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+#Let's visualize the clusters
+groups <- cutree(df.agnes, k = 8)
+fviz_cluster(list(data = df, cluster = groups),
+             palette = "npg",
+             repel = TRUE, 
+             show.clust.cent = FALSE, ggtheme = theme_minimal())
+```
+
+### Partitioning Clustering
+
+Since the optimal number of clusters appears to be 4 (excluding outliers), I seek additional confirmation using partitioning criteria.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+#Elbow method (it appears to be at k = 5)
+fviz_nbclust(df, kmeans, method = "wss") +
+  geom_vline(xintercept = 5, linetype = 2)+
+  labs(subtitle = "Elbow method")
+```
+
+The elbow method suggests 5 clusters.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+#Silhouette method (suggests k = 4)
+fviz_nbclust(df, kmeans, method = "silhouette")+
+  labs(subtitle = "Silhouette method")
+```
+
+The average silhouette suggests k =4, even though 6 or 8 seems to be just slightly worse.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+#Gap Statistic (suggests k = 2)
+set.seed(123)
+fviz_nbclust(df, kmeans, nstart = 25, method = "gap_stat", nboot = 500)+
+  labs(subtitle = "Gap statistic method")
+```
+
+The gap statistic is the most conservative criterion and suggests $k = 2$, though $k = 4$ performs only slightly worse.
+
+Because the dataset includes several outliers, namely:
+
+- **District of Columbia**, since it is the Washington metropolitan district;
+
+- **Florida** and **Texas**, large and economically distinctive southern states that still share some southern social characteristics;
+
+- **Hawaii**, due to its geographic isolation, small population, and distinct socioeconomic profile.
+
+I apply the **Fuzzy K-Means with Noise cluster** algorithm.
+
+### Fuzzy k-means with noise cluster
+
+Let's apply it.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+df.FKMN <- FKM.noise(df, k = 4, seed = 123, delta = 2)
+
+(noise <- which(rowSums(df.FKMN$U) < 0.5))
+```
+
+It detects outliers reasonably well. Now I visualize the hard cluster assignments.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+FKMN.clus.viz <- df.FKMN$clus[,1]
+FKMN.clus.viz[noise] <- 5
+fviz_cluster(list(data = df, cluster = FKMN.clus.viz),
+             palette = "npg",
+             repel = TRUE,
+             show.clust.cent = FALSE, 
+             ggtheme = theme_minimal())
+
+
+plot_data <- data.frame(
+  state = rownames(df),
+  cluster = as.factor(FKMN.clus.viz)
+)
+```
+
+The four-cluster structure still appears. Let's visualize it on a U.S. map.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+plot_usmap(data = plot_data, values = "cluster", color = "white") +
+  scale_fill_brewer(palette = "Set1", name = "Clusters") + 
+  theme(legend.position = "right")
+```
+
+Cluster 1 roughly corresponds to the **Bible Belt**; cluster 2 to the **Northwest**; cluster 3 to the more developed **Northeast** plus states like Colorado, Washington, and Minnesota; and cluster 4 resembles much of the **Rust Belt**, with additional western and southern states. The detected outliers are plausible.
+
+Finally, I summarize how clusters differ in terms of standardized variable means.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+(scaled_means_matrix <- aggregate(df, 
+                                 by = list(Cluster = FKMN.clus.viz), 
+                                 FUN = mean))
+```

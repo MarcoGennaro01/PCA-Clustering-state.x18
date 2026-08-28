@@ -2,3 +2,6 @@
 *.Rproj.user
 *.Rhistory
 .Rproj.user
+renv/library/
+renv/staging/
+renv/python/
